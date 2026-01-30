@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Fluy • Controle Financeiro</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://unpkg.com/gsap@3/dist/gsap.min.js"></script>
+
+<style>
+@keyframes float {0% { transform: translateY(0); } 50% { transform: translateY(-6px); } 100% { transform: translateY(0); }}
+.logo-float {animation: float 3s ease-in-out infinite;}
+</style>
+</head>
+
+<body class="bg-gradient-to-br from-green-600 to-yellow-400 min-h-screen flex justify-center">
+
+<div class="w-full max-w-md p-4 text-white">
+
+<!-- HEADER / LOGO -->
+<div class="flex flex-col items-center mb-4">
+  <div class="logo-float bg-white rounded-full w-16 h-16 flex items-center justify-center shadow-xl mb-2">
+    <svg width="34" height="34" viewBox="0 0 24 24" fill="none">
+      <path d="M3 14c4-6 10-6 18-2" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round"/>
+      <path d="M3 18c4-4 10-4 18 0" stroke="#facc15" stroke-width="2.5" stroke-linecap="round"/>
+    </svg>
+  </div>
+  <h1 class="text-2xl font-bold tracking-wide">Fluy</h1>
+  <p class="text-xs opacity-90">Seu dinheiro em movimento</p>
+</div>
+
+<!-- SALDO -->
+<div class="bg-white text-black rounded-2xl p-5 shadow-xl mb-4">
+<p class="text-sm text-gray-500">Saldo disponível no mês</p>
+<h2 id="balance" class="text-3xl font-bold text-green-600">R$ 0,00</h2>
+
+<div class="flex gap-3 mt-4">
+<button onclick="openModal('income')" class="flex-1 bg-green-600 py-4 rounded-xl text-lg active:scale-95 transition">+ Receita</button>
+<button onclick="openModal('expense')" class="flex-1 bg-red-500 py-4 rounded-xl text-lg active:scale-95 transition">- Gasto</button>
+</div>
+
+<p id="message" class="mt-3 text-center font-medium"></p>
+</div>
+
+<!-- LIMITE -->
+<div class="bg-white text-black rounded-2xl p-4 shadow mb-4">
+<p class="font-semibold mb-2">Limite de Gastos Mensais</p>
+<input id="limitInput" type="number" placeholder="Defina seu limite mensal"
+class="w-full border rounded-xl p-3 mb-3">
+
+<button onclick="saveLimit()" class="w-full bg-green-600 text-white py-3 rounded-xl active:scale-95 transition">Salvar limite</button>
+
+<div class="mt-4">
+<div class="flex justify-between text-sm mb-1">
+<span>Uso do limite</span>
+<span id="limitPercent">0%</span>
+</div>
+
+<div class="w-full bg-gray-200 rounded-full h-4">
+<div id="limitBar" class="h-4 rounded-full bg-green-500 transition-all"></div>
+</div>
+
+<p id="limitStatus" class="text-center font-semibold mt-2"></p>
+</div>
+</div>
+
+<!-- LANÇAMENTOS -->
+<div class="bg-white text-black rounded-2xl p-4 shadow mb-4">
+<p class="font-semibold mb-2">Lançamentos</p>
+<ul id="list" class="space-y-2 text-sm"></ul>
+</div>
+
+<!-- GRÁFICO -->
+<div class="bg-white text-black rounded-2xl p-4 shadow">
+<p class="font-semibold mb-2">Despesas por categoria</p>
+<canvas id="chart"></canvas>
+</div>
+
+</div>
+
+<!-- MODAL -->
+<div id="modal" class="fixed inset-0 bg-black/40 hidden items-end">
+<div class="bg-white w-full rounded-t-3xl p-5 text-black">
+<p id="modalTitle" class="font-bold mb-3"></p>
+<input id="valueInput" type="number" placeholder="Valor"
+class="w-full border rounded-xl p-3 mb-3">
+<div id="categoryButtons" class="grid grid-cols-2 gap-2 mb-4"></div>
+<button onclick="confirmAdd()" class="w-full bg-green-600 text-white py-3 rounded-xl active:scale-95">Confirmar</button>
+<button onclick="closeModal()" class="w-full mt-2 text-gray-500">Cancelar</button>
+</div>
+</div>
+
+<script>
+// --- DADOS SALVOS ---
+let storedData = JSON.parse(localStorage.getItem("fluyData")) || {items:[], limit:0};
+let currentType="", selectedCategory="";
+const incomeCategories=["Salário","Renda Extra","Freelas","Comissões","Investimentos","Outros"];
+const expenseCategories=["Moradia","Alimentação","Transporte","Lazer","Assinaturas","Saúde","Educação","Compras","Outros"];
+const messages={income:["💰 Receita registrada!","📈 Saldo subindo!","🚀 Boa entrada!"], expense:["💸 Gasto anotado!","⚠️ Olho no limite!","📉 Saiu do caixa!"]};
+
+// --- CHART ---
+const chart=new Chart(document.getElementById("chart"),{
+type:"pie",
+data:{labels:expenseCategories,datasets:[{data:Array(expenseCategories.length).fill(0),
+backgroundColor:["#16a34a","#22c55e","#4ade80","#fde047","#facc15","#86efac","#bbf7d0","#65a30d","#4d7c0f","#d97706"]}]}
+});
+
+// --- FUNÇÕES ---
+function saveData(){localStorage.setItem("fluyData",JSON.stringify(storedData));}
+function updateUI(){
+const income=storedData.items.filter(i=>i.type==="income").reduce((a,b)=>a+b.value,0);
+const expense=storedData.items.filter(i=>i.type==="expense").reduce((a,b)=>a+b.value,0);
+balance.innerText=`R$ ${(income-expense).toFixed(2)}`;
+
+// atualiza gráfico
+expenseCategories.forEach((c,i)=>{
+chart.data.datasets[0].data[i]=storedData.items.filter(it=>it.type==="expense"&&it.category===c).reduce((a,b)=>a+b.value,0);
+});
+chart.update();
+
+// lista lançamentos
+list.innerHTML=storedData.items.map((it,i)=>
+`<li class="flex justify-between"><span>${it.type==="income"?"➕":"➖"} ${it.category} - R$ ${it.value}</span>
+<button onclick="removeItem(${i})" class="text-red-500">✕</button></li>`).join("");
+
+// atualiza limite
+updateLimit(expense);
+saveData();
+}
+
+function saveLimit(){storedData.limit=Number(limitInput.value);updateUI();}
+function updateLimit(exp){
+if(!storedData.limit) return;
+let p=Math.min((exp/storedData.limit)*100,100);
+limitPercent.innerText=p.toFixed(0)+"%";
+limitBar.style.width=p+"%";
+limitBar.className="h-4 rounded-full "+(p<60?"bg-green-500":p<90?"bg-yellow-400":"bg-red-500");
+limitStatus.innerText=p<60?"🟢 Limite sob controle":p<90?"🟡 Atenção":"🔴 Limite estourando!";
+}
+
+function openModal(t){
+currentType=t;selectedCategory="";
+modalTitle.innerText=t==="income"?"Adicionar Receita":"Adicionar Gasto";
+categoryButtons.innerHTML="";
+(t==="income"?incomeCategories:expenseCategories).forEach(c=>{
+let b=document.createElement("button");
+b.innerText=c;b.className="border rounded-xl py-2 active:scale-95";
+b.onclick=()=>{selectedCategory=c;[...categoryButtons.children].forEach(x=>x.classList.remove("bg-green-200"));b.classList.add("bg-green-200");};
+categoryButtons.appendChild(b);
+});
+modal.classList.remove("hidden");
+}
+function closeModal(){modal.classList.add("hidden");}
+function confirmAdd(){
+let v=Number(valueInput.value); if(!v||!selectedCategory) return;
+storedData.items.push({value:v,category:selectedCategory,type:currentType});
+valueInput.value="";closeModal();
+message.innerText=messages[currentType][Math.floor(Math.random()*messages[currentType].length)];
+updateUI();
+}
+function removeItem(i){storedData.items.splice(i,1);updateUI();}
+
+// --- INICIALIZA ---
+limitInput.value=storedData.limit||"";
+updateUI();
+</script>
+
+</body>
+</html>
